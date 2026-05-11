@@ -77,6 +77,14 @@ function TeamSelectScreen({ onEnter }: { onEnter: (team: string) => void }) {
   );
 }
 
+function hideDuplicateContentBranding() {
+  const roots = document.querySelectorAll(".team-gate-entered .flex-1 img[alt='차바이오그룹 CI']");
+  roots.forEach((image) => {
+    const wrapper = image.parentElement;
+    if (wrapper instanceof HTMLElement) wrapper.style.display = "none";
+  });
+}
+
 export default function LearnerAppTeamGate() {
   const [entered, setEntered] = useState(false);
   const [teamKey, setTeamKey] = useState("");
@@ -89,6 +97,32 @@ export default function LearnerAppTeamGate() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!entered) return;
+    hideDuplicateContentBranding();
+
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      const button = target?.closest("button");
+      if (button?.textContent?.includes("팀명 변경")) {
+        event.preventDefault();
+        event.stopPropagation();
+        window.localStorage.removeItem(TEAM_STORAGE_KEY);
+        setTeamKey("");
+        setEntered(false);
+      }
+    };
+
+    document.addEventListener("click", handleClick, true);
+    const observer = new MutationObserver(() => hideDuplicateContentBranding());
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      document.removeEventListener("click", handleClick, true);
+      observer.disconnect();
+    };
+  }, [entered]);
+
   const handleEnter = (team: string) => {
     window.localStorage.setItem(TEAM_STORAGE_KEY, team);
     setTeamKey(team);
@@ -96,5 +130,9 @@ export default function LearnerAppTeamGate() {
   };
 
   if (!entered) return <TeamSelectScreen onEnter={handleEnter} />;
-  return <LearnerAppPilotV5 key={teamKey} />;
+  return (
+    <div className="team-gate-entered">
+      <LearnerAppPilotV5 key={teamKey} />
+    </div>
+  );
 }
