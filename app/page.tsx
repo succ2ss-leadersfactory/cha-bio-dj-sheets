@@ -1,4 +1,4 @@
-import LearnerAppTeamGate from "@/components/LearnerAppTeamGate";
+import LearnerAppSheetsSync from "@/components/LearnerAppSheetsSync";
 
 export default function Page() {
   return (
@@ -8,7 +8,7 @@ export default function Page() {
           display: none !important;
         }
       `}</style>
-      <LearnerAppTeamGate />
+      <LearnerAppSheetsSync />
     </main>
   );
 }
