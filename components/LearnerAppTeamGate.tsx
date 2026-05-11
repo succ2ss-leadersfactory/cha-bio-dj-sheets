@@ -38,7 +38,7 @@ function TeamSelectScreen({ onEnter }: { onEnter: (team: string) => void }) {
           <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
             <div className="text-center">
               <div className="text-lg font-black text-slate-900">팀을 선택해주세요</div>
-              <p className="mt-2 text-xs leading-5 text-slate-500">차바이오그룹 1차수 파일럿은 1팀~6팀으로 운영됩니다.</p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">참여할 팀을 선택해주세요.</p>
             </div>
 
             <div className="mt-5 grid grid-cols-2 gap-3">
