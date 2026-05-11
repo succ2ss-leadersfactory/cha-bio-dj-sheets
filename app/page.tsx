@@ -1,4 +1,4 @@
-import LearnerAppPilotV5 from "@/components/LearnerAppPilotV5";
+import LearnerAppSheetsTeamSelect from "@/components/LearnerAppSheetsTeamSelect";
 
 export default function Page() {
   return (
@@ -11,7 +11,7 @@ export default function Page() {
           display: none !important;
         }
       `}</style>
-      <LearnerAppPilotV5 />
+      <LearnerAppSheetsTeamSelect />
     </main>
   );
 }
