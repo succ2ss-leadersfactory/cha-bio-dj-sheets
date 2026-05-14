@@ -318,4 +318,5 @@ export default function LearnerAppPilotV5() {
     {screen === 14 && <div className="space-y-5"><Pill tone="green">김박사의 피드백</Pill><Card className="p-5"><pre className="whitespace-pre-wrap text-sm font-semibold leading-8 text-slate-700">{kim}</pre></Card><PrimaryButton onClick={next}>로그북 저장하기</PrimaryButton></div>}
     {screen === 15 && <div className="space-y-5"><Pill tone="green">로그북</Pill><Card className="space-y-3 p-5 text-sm"><div className="rounded-2xl bg-emerald-50 p-3 text-center text-xs font-bold text-emerald-700">브라우저 임시 저장소에 저장되었습니다.</div><div className="flex justify-between"><span>1차 판단</span><b>{firstChoice}</b></div><div className="flex justify-between"><span>2차 판단</span><b>{secondChoice}</b></div><div className="border-t pt-3 whitespace-pre-wrap">{finalPreview}</div></Card><PrimaryButton onClick={next}>전체 여정 보기</PrimaryButton></div>}
 {screen === 16 && <div className="space-y-5"><Pill>여정 요약</Pill><h2 className="text-center text-2xl font-black text-slate-900">{round.id}라운드 · {round.title} 판단 여정이 저장되었습니다</h2><Card className="p-5"><p className="text-sm leading-7 text-slate-600">우리 팀은 이 라운드에서 1차 판단, 돌발상황 검토, 2차 판단, AI 답변 검토, 최종 5줄 결정문까지 완료했습니다.</p></Card><PrimaryButton onClick={() => { refreshCompleted(team); reset(); setScreen(1); }}>홈으로 돌아가기</PrimaryButton></div>}
-    
+      </Shell>;
+}
