@@ -208,6 +208,7 @@ function extractFinalDecisionLines(text: string): string[] {
     FINAL_DECISION_MARKERS.some((marker) => line.startsWith(marker))
   );
 
+ 
   if (bulletLines.length >= 5) return bulletLines.slice(0, 5);
 
   return [];
