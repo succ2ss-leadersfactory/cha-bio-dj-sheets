@@ -124,16 +124,31 @@ function FirstOptionCard({ label, title, selected, onClick, tone }: { label: Fir
 function SecondDecisionCard({ option, selected, onClick }: { option: { value: SecondChoice; title: string; desc: string; tone: "blue" | "teal" | "purple"; icon: string }; selected: boolean; onClick: () => void }) { const selectedClass = option.tone === "blue" ? "border-blue-400 bg-blue-50 ring-blue-100" : option.tone === "teal" ? "border-teal-400 bg-teal-50 ring-teal-100" : "border-violet-400 bg-violet-50 ring-violet-100"; const badge = option.tone === "blue" ? "bg-blue-600" : option.tone === "teal" ? "bg-teal-600" : "bg-violet-600"; return <button onClick={onClick} className={`w-full rounded-3xl border p-4 text-left transition ${selected ? `${selectedClass} ring-4` : "border-slate-200 bg-white"}`}><div className="flex items-center gap-3"><div className={`flex min-h-12 w-20 shrink-0 items-center justify-center rounded-2xl px-2 text-center text-sm font-extrabold leading-5 text-white ${badge}`}>{option.value}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span>{option.icon}</span><div className="text-base font-extrabold leading-6 text-slate-800">{option.title}</div></div><div className="mt-1 text-sm leading-6 text-slate-500">{option.desc}</div></div><div className={`h-5 w-5 shrink-0 rounded-full border-2 ${selected ? "border-blue-600 bg-blue-600" : "border-slate-300"}`} /></div></button>; }
 function SurpriseVisual({ n }: { n: number }) { const icons = ["👤", "⚠️", "📈"]; return <div className="rounded-[2rem] bg-gradient-to-br from-slate-900 via-blue-950 to-teal-900 p-5 text-white shadow-lg"><div className="flex items-center justify-between"><span className="rounded-full bg-white/10 px-4 py-1 text-xs font-bold">돌발상황 {n}</span><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-2xl">{icons[n - 1]}</span></div><h2 className="mt-5 text-2xl font-black leading-tight">새 변수가<br />발생했습니다</h2><p className="mt-2 text-sm text-white/70">처음 판단의 숨은 비용을 다시 확인해보세요.</p></div>; }
 
+const FINAL_DECISION_MARKERS = [
+  "나는 이 상황을",
+  "나의 최종 선택은",
+  "이 선택의 가장 큰 비용은",
+  "그래서 붙일 실행 조건은",
+  "내일 바로 할 첫 행동은",
+];
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function cleanFinalDecisionLine(line: string) {
   return line
+    .replace(/^\s*#+\s*/, "")
+    .replace(/^\s*\*\*/, "")
+    .replace(/\*\*\s*$/g, "")
     .replace(/^\s*(?:[-*•]\s*)?(?:[1-5][.)]|[①②③④⑤])\s*/, "")
-    .replace(/^\s*\*\*|\*\*\s*$/g, "")
     .replace(/^["“”']|["“”']$/g, "")
+    .replace(/\s*이 초안은 참여자의 판단을 바탕으로 한 수정 가능한 초안입니다\.?[\s\S]*$/g, "")
     .trim();
 }
 
-function extractFinalDecisionLines(text: string): string[] {
-  const normalized = text
+function normalizeFinalDecisionText(text: string) {
+  let normalized = text
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .replace(/[①]/g, "1.")
@@ -142,52 +157,61 @@ function extractFinalDecisionLines(text: string): string[] {
     .replace(/[④]/g, "4.")
     .replace(/[⑤]/g, "5.");
 
-  const sectionMatch = normalized.match(
-    /\[최종 결정 5줄 입력용 초안\]([\s\S]*?)(?:\n\[[^\]]+\]|\n이 초안은|$)/
-  );
+  FINAL_DECISION_MARKERS.forEach((marker) => {
+    const markerRegex = new RegExp(`\\s*(${escapeRegExp(marker)})`, "g");
+    normalized = normalized.replace(markerRegex, "\n$1");
+  });
 
-  const source = sectionMatch?.[1] || normalized;
+  return normalized;
+}
 
-  const phrasePatterns = [
-    /나는\s*이\s*상황을[^\n]*(?:문제로\s*본다|문제라고\s*본다|문제이다|문제다)[^\n]*/i,
-    /나의\s*최종\s*선택은[^\n]*/i,
-    /이\s*선택의\s*가장\s*큰\s*비용은[^\n]*/i,
-    /그래서\s*붙일\s*실행\s*조건은[^\n]*/i,
-    /내일\s*바로\s*할\s*첫\s*행동은[^\n]*/i,
+function getFinalDecisionSource(text: string) {
+  const normalized = normalizeFinalDecisionText(text);
+
+  const sectionIndexes = [
+    normalized.lastIndexOf("[앱 입력용 최종 결정 5줄]"),
+    normalized.lastIndexOf("[최종 결정 5줄 입력용 초안]"),
   ];
 
-  const phraseLines = phrasePatterns
-    .map((pattern) => {
-      const match = source.match(pattern)?.[0] || normalized.match(pattern)?.[0] || "";
-      return cleanFinalDecisionLine(match);
-    })
+  const startIndex = Math.max(...sectionIndexes);
+  let source = startIndex >= 0 ? normalized.slice(startIndex) : normalized;
+
+  const disclaimerIndex = source.indexOf("이 초안은 참여자의 판단을 바탕으로 한 수정 가능한 초안입니다");
+  if (disclaimerIndex >= 0) source = source.slice(0, disclaimerIndex);
+
+  return source;
+}
+
+function extractFinalDecisionLines(text: string): string[] {
+  const source = getFinalDecisionSource(text);
+  const lines = source
+    .split("\n")
+    .map((line) => cleanFinalDecisionLine(line))
     .filter(Boolean);
 
-  if (phraseLines.length === 5) return phraseLines;
+  const markerLines = FINAL_DECISION_MARKERS.map((marker) => {
+    return lines.find((line) => line.startsWith(marker)) || "";
+  }).filter(Boolean);
+
+  if (markerLines.length === 5) return markerLines;
 
   const numberedLines = source
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => /^(?:[-*•]\s*)?[1-5][.)]\s+/.test(line))
+    .filter((line) => /^(?:\*\*)?\s*(?:[-*•]\s*)?[1-5][.)]\s*/.test(line))
     .map(cleanFinalDecisionLine)
     .filter(Boolean);
 
   if (numberedLines.length >= 5) return numberedLines.slice(0, 5);
 
-  const bulletLines = source
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) =>
-      /^(?:[-*•]\s*)?(나는 이 상황을|나의 최종 선택은|이 선택의 가장 큰 비용은|그래서 붙일 실행 조건은|내일 바로 할 첫 행동은)/.test(line)
-    )
-    .map(cleanFinalDecisionLine)
-    .filter(Boolean);
+  const bulletLines = lines.filter((line) =>
+    FINAL_DECISION_MARKERS.some((marker) => line.startsWith(marker))
+  );
 
   if (bulletLines.length >= 5) return bulletLines.slice(0, 5);
 
   return [];
 }
-
 
 
 export default function LearnerAppPilotV5() {
