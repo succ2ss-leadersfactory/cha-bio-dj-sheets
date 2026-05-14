@@ -124,6 +124,96 @@ function FirstOptionCard({ label, title, selected, onClick, tone }: { label: Fir
 function SecondDecisionCard({ option, selected, onClick }: { option: { value: SecondChoice; title: string; desc: string; tone: "blue" | "teal" | "purple"; icon: string }; selected: boolean; onClick: () => void }) { const selectedClass = option.tone === "blue" ? "border-blue-400 bg-blue-50 ring-blue-100" : option.tone === "teal" ? "border-teal-400 bg-teal-50 ring-teal-100" : "border-violet-400 bg-violet-50 ring-violet-100"; const badge = option.tone === "blue" ? "bg-blue-600" : option.tone === "teal" ? "bg-teal-600" : "bg-violet-600"; return <button onClick={onClick} className={`w-full rounded-3xl border p-4 text-left transition ${selected ? `${selectedClass} ring-4` : "border-slate-200 bg-white"}`}><div className="flex items-center gap-3"><div className={`flex min-h-12 w-20 shrink-0 items-center justify-center rounded-2xl px-2 text-center text-sm font-extrabold leading-5 text-white ${badge}`}>{option.value}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span>{option.icon}</span><div className="text-base font-extrabold leading-6 text-slate-800">{option.title}</div></div><div className="mt-1 text-sm leading-6 text-slate-500">{option.desc}</div></div><div className={`h-5 w-5 shrink-0 rounded-full border-2 ${selected ? "border-blue-600 bg-blue-600" : "border-slate-300"}`} /></div></button>; }
 function SurpriseVisual({ n }: { n: number }) { const icons = ["👤", "⚠️", "📈"]; return <div className="rounded-[2rem] bg-gradient-to-br from-slate-900 via-blue-950 to-teal-900 p-5 text-white shadow-lg"><div className="flex items-center justify-between"><span className="rounded-full bg-white/10 px-4 py-1 text-xs font-bold">돌발상황 {n}</span><span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-2xl">{icons[n - 1]}</span></div><h2 className="mt-5 text-2xl font-black leading-tight">새 변수가<br />발생했습니다</h2><p className="mt-2 text-sm text-white/70">처음 판단의 숨은 비용을 다시 확인해보세요.</p></div>; }
 
+const FINAL_DECISION_MARKERS = [
+  "나는 이 상황을",
+  "나의 최종 선택은",
+  "이 선택의 가장 큰 비용은",
+  "그래서 붙일 실행 조건은",
+  "내일 바로 할 첫 행동은",
+];
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function cleanFinalDecisionLine(line: string) {
+  return line
+    .replace(/^\s*#+\s*/, "")
+    .replace(/^\s*\*\*/, "")
+    .replace(/\*\*\s*$/g, "")
+    .replace(/^\s*(?:[-*•]\s*)?(?:[1-5][.)]|[①②③④⑤])\s*/, "")
+    .replace(/^["“”']|["“”']$/g, "")
+    .replace(/\s*이 초안은 참여자의 판단을 바탕으로 한 수정 가능한 초안입니다\.?[\s\S]*$/g, "")
+    .trim();
+}
+
+function normalizeFinalDecisionText(text: string) {
+  let normalized = text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/[①]/g, "1.")
+    .replace(/[②]/g, "2.")
+    .replace(/[③]/g, "3.")
+    .replace(/[④]/g, "4.")
+    .replace(/[⑤]/g, "5.");
+
+  FINAL_DECISION_MARKERS.forEach((marker) => {
+    const markerRegex = new RegExp(`\\s*(${escapeRegExp(marker)})`, "g");
+    normalized = normalized.replace(markerRegex, "\n$1");
+  });
+
+  return normalized;
+}
+
+function getFinalDecisionSource(text: string) {
+  const normalized = normalizeFinalDecisionText(text);
+
+  const sectionIndexes = [
+    normalized.lastIndexOf("[앱 입력용 최종 결정 5줄]"),
+    normalized.lastIndexOf("[최종 결정 5줄 입력용 초안]"),
+  ];
+
+  const startIndex = Math.max(...sectionIndexes);
+  let source = startIndex >= 0 ? normalized.slice(startIndex) : normalized;
+
+  const disclaimerIndex = source.indexOf("이 초안은 참여자의 판단을 바탕으로 한 수정 가능한 초안입니다");
+  if (disclaimerIndex >= 0) source = source.slice(0, disclaimerIndex);
+
+  return source;
+}
+
+function extractFinalDecisionLines(text: string): string[] {
+  const source = getFinalDecisionSource(text);
+  const lines = source
+    .split("\n")
+    .map((line) => cleanFinalDecisionLine(line))
+    .filter(Boolean);
+
+  const markerLines = FINAL_DECISION_MARKERS.map((marker) => {
+    return lines.find((line) => line.startsWith(marker)) || "";
+  }).filter(Boolean);
+
+  if (markerLines.length === 5) return markerLines;
+
+  const numberedLines = source
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /^(?:\*\*)?\s*(?:[-*•]\s*)?[1-5][.)]\s*/.test(line))
+    .map(cleanFinalDecisionLine)
+    .filter(Boolean);
+
+  if (numberedLines.length >= 5) return numberedLines.slice(0, 5);
+
+  const bulletLines = lines.filter((line) =>
+    FINAL_DECISION_MARKERS.some((marker) => line.startsWith(marker))
+  );
+
+  if (bulletLines.length >= 5) return bulletLines.slice(0, 5);
+
+  return [];
+}
+
+
 export default function LearnerAppPilotV5() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [screen, setScreen] = useState(0);
@@ -169,6 +259,19 @@ export default function LearnerAppPilotV5() {
   const next = () => setScreen((s) => Math.min(s + 1, 16));
   const prev = () => setScreen((s) => Math.max(s - 1, 2));
   const home = () => { refreshCompleted(team); setScreen(1); };
+   const importAiFinalLines = () => {
+    const extracted = extractFinalDecisionLines(aiSummary);
+
+    if (extracted.length !== 5) {
+      window.alert(
+        "AI 답변에서 최종 결정 5줄을 찾지 못했습니다. AI 답변의 [최종 결정 5줄 입력용 초안] 부분을 포함해 붙여넣었는지 확인해 주세요."
+      );
+      return;
+    }
+
+    setFinalLines(extracted);
+  };
+  
   const save = () => { if (!firstChoice || !secondChoice || !canFinal) return; saveSubmission({ id: `${PILOT_SESSION_CODE}-${team}-${round.id}`, sessionCode: PILOT_SESSION_CODE, teamName: team.trim(), roundId: round.id, roundTitle: round.title, firstChoice, firstReason: firstReason.trim(), concern: concern.trim(), secondChoice, secondReason, secondQuestionAnswers: selectedQuestions.map((question, i) => ({ question, answer: secondAnswers[i].trim() })), aiQuestion: prompt, generatedPrompt: prompt, aiAnswerSummary: aiSummary.trim(), aiFeedbackSummary: aiSummary.trim(), aiReviewResults: reviewItems.map((question, i) => ({ question, answer: (reviewAnswers[i] || "모르겠음") as AiReviewAnswer })), aiReviewNote: reviewNote.trim(), finalLines: finalLines.map((x) => x.trim()), aftermath: round.aftermath, doctorKimFeedback: kim, createdAt: new Date().toISOString() }); refreshCompleted(team); next(); };
   const nextDisabled = screen === 4 ? !canFirst : screen === 8 ? !canSecond : screen === 9 ? !canSecondQuestions : screen === 10 ? !canAi : screen === 12 ? !canReview : screen === 13 ? !canFinal : false;
   const navNext = () => { if (nextDisabled) return; if (screen === 13) return save(); next(); };
@@ -183,10 +286,35 @@ export default function LearnerAppPilotV5() {
     {[5, 6, 7].includes(screen) && <div className="space-y-5"><SurpriseVisual n={screen - 4}/><Card className="p-5"><div className="mb-3 flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-50 text-2xl">⚡</span><b className="text-sm text-orange-700">새롭게 고려해야 할 변수</b></div><p className="text-lg font-extrabold leading-8 text-slate-900">{round.surprises[screen - 5]}</p></Card><PrimaryButton onClick={next}>{screen === 7 ? "2차 판단으로 이동" : "다음 돌발상황"}</PrimaryButton></div>}
     {screen === 8 && <div className="space-y-4"><StepHero badge="2차 판단" title="처음 판단을 다시 조정합니다" subtitle="1차 판단과 돌발상황을 함께 놓고 방향을 다시 선택합니다." icon="🔀" tone="teal"/><Info title="나의 1차 판단 요약"><p><b>선택:</b> {firstChoice}. {firstChoiceText}</p><p><b>이유:</b> {firstReason}</p><p><b>우려:</b> {concern}</p></Info><Info title="현재 확인한 돌발상황" tone="orange"><ol className="list-decimal space-y-1 pl-5">{round.surprises.map((s, i) => <li key={i}>{s}</li>)}</ol></Info>{secondOptions.map((o) => <SecondDecisionCard key={o.value} option={o} selected={secondChoice === o.value} onClick={() => { setSecondChoice(o.value); setSecondAnswers(["", "", ""]); }} />)}{!canSecond && <RequiredMessage>기존 유지 / 일부 수정 / 판단 변경 중 하나를 선택해주세요.</RequiredMessage>}<PrimaryButton onClick={next} disabled={!canSecond}>선택별 질문으로 이동</PrimaryButton></div>}
     {screen === 9 && secondChoice && <div className="space-y-4"><StepHero badge="선택별 질문" title={`${secondChoice}의 근거를 구체화합니다`} subtitle="선택의 근거, 비용, 설명 방식을 분리해서 적어보세요." icon="📝" tone="purple"/>{selectedQuestions.map((q, i) => <Card key={q} className="space-y-3 p-4"><div className="flex items-start gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-sm font-black text-violet-700">{i+1}</span><b className="text-sm leading-6 text-slate-800">{q}</b></div><TextArea label="답변" placeholder="구체적으로 입력해주세요." value={secondAnswers[i]} onChange={(v) => setSecondAnswers((arr) => arr.map((x, idx) => idx === i ? v : x))} /></Card>)}{!canSecondQuestions && <RequiredMessage>선택별 질문 3개에 모두 답변해야 다음으로 이동할 수 있습니다.</RequiredMessage>}<PrimaryButton onClick={next} disabled={!canSecondQuestions}>AI 프롬프트 확인하기</PrimaryButton></div>}
-    {screen === 10 && <div className="space-y-5"><StepHero badge="AI 모범 프롬프트" title="프롬프트를 복사해 AI 도구에 붙여넣으세요" subtitle="내 판단과 선택별 답변이 자동으로 반영됩니다." icon="🤖" tone="purple"/><Card className="space-y-4 p-4"><pre className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-2xl bg-slate-50 p-4 text-xs leading-6 text-slate-700">{prompt}</pre><button onClick={async () => { await navigator.clipboard.writeText(prompt); setCopied(true); }} className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-extrabold text-white">{copied ? "복사 완료" : "프롬프트 복사하기"}</button></Card><TextArea label="AI 답변 핵심 요약" placeholder="AI 답변의 핵심을 요약해주세요." value={aiSummary} onChange={setAiSummary} rows={5} />{!canAi && <RequiredMessage>AI 답변 핵심 요약을 입력해주세요.</RequiredMessage>}<PrimaryButton onClick={next} disabled={!canAi}>AI답변 검토하기</PrimaryButton></div>}
-    {screen === 11 && <div className="space-y-4"><Pill tone="purple">AI 답변 요약</Pill><Info title="AI 답변 핵심 요약" tone="purple">{aiSummary}</Info><PrimaryButton onClick={next}>AI답변 검토하기</PrimaryButton></div>}
+    {screen === 10 && <div className="space-y-5"><StepHero badge="AI 모범 프롬프트" title="프롬프트를 복사해 AI 도구에 붙여넣으세요" subtitle="내 판단과 선택별 답변이 자동으로 반영됩니다." icon="🤖" tone="purple"/><Card className="space-y-4 p-4"><pre className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-2xl bg-slate-50 p-4 text-xs leading-6 text-slate-700">{prompt}</pre><button onClick={async () => { await navigator.clipboard.writeText(prompt); setCopied(true); }} className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-extrabold text-white">{copied ? "복사 완료" : "프롬프트 복사하기"}</button></Card><TextArea label="AI 답변 전체 붙여넣기" placeholder="Gemini 또는 ChatGPT가 생성한 답변 전체를 붙여넣어 주세요. 최종 결정 5줄 초안을 불러오는 데 사용됩니다." value={aiSummary} onChange={setAiSummary} rows={6} />{!canAi && <RequiredMessage>AI 답변 전체를 붙여넣어 주세요.</RequiredMessage>}<PrimaryButton onClick={next} disabled={!canAi}>AI답변 검토하기</PrimaryButton></div>}
+    {screen === 11 && <div className="space-y-4"><Pill tone="purple">AI 답변 확인</Pill><Info title="AI 답변 전체" tone="purple">{aiSummary}</Info><PrimaryButton onClick={next}>AI답변 검토하기</PrimaryButton></div>}
+
+    
     {screen === 12 && <div className="space-y-4"><StepHero badge="AI답변 검토" title="AI 답변을 그대로 믿지 말고 판단해보세요" subtitle="O, X, 모르겠음으로 답변 품질을 점검합니다." icon="🔎" tone="orange"/>{reviewItems.map((q, i) => <Card key={q} className="p-4"><p className="mb-3 text-sm font-bold leading-6 text-slate-700">{q}</p><div className="grid grid-cols-3 gap-2">{(["O", "X", "모르겠음"] as ReviewChoice[]).map((a) => <button key={a} onClick={() => setReviewAnswers((arr) => arr.map((x, idx) => idx === i ? a : x))} className={`rounded-2xl border px-2 py-3 text-xs font-extrabold ${reviewAnswers[i] === a ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-100 bg-white text-slate-500"}`}>{a}</button>)}</div></Card>)}<TextArea label="보완 메모" placeholder="X 또는 모르겠음이 있다면 보완점을 적어주세요." value={reviewNote} onChange={setReviewNote} />{!canReview && <RequiredMessage>모든 항목에 답하고 필요한 경우 보완 메모를 입력해주세요.</RequiredMessage>}<PrimaryButton onClick={next} disabled={!canReview}>최종 결정문 작성하기</PrimaryButton></div>}
-    {screen === 13 && <div className="space-y-4"><StepHero badge="최종 결정" title="5줄 결정문을 완성합니다" subtitle="입력한 문장이 하나의 최종 결정문으로 이어집니다." icon="✅" tone="green"/><Info title="좋은 결정문 기준" tone="green">추상적 다짐보다 구체적 행동을 적습니다. 선택의 비용과 실행 조건이 드러나야 합니다.</Info>{finalGuides.map((g, i) => <div key={g[0]} className="space-y-2"><TextInput label={`${i + 1}. ${g[0]}`} placeholder="내용을 입력하세요" value={finalLines[i]} onChange={(v) => setFinalLines((arr) => arr.map((x, idx) => idx === i ? v : x))} /><p className="rounded-2xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">{g[1]}</p></div>)}{canFinal && <Card className="border-emerald-100 bg-emerald-50 p-5"><Pill tone="green">완성 결정문 미리보기</Pill><pre className="mt-4 whitespace-pre-wrap text-sm font-semibold leading-7 text-slate-800">{finalPreview}</pre></Card>}{!canFinal && <RequiredMessage>최종 5줄 결정문을 모두 입력해야 저장할 수 있습니다.</RequiredMessage>}<PrimaryButton onClick={save} disabled={!canFinal}>제출하고 저장하기</PrimaryButton></div>}
+    {screen === 13 && <div className="space-y-4"><StepHero badge="최종 결정" title="5줄 결정문을 완성합니다" subtitle="입력한 문장이 하나의 최종 결정문으로 이어집니다." icon="✅" tone="green"/><Info title="좋은 결정문 기준" tone="green">추상적 다짐보다 구체적 행동을 적습니다. 선택의 비용과 실행 조건이 드러나야 합니다.</Info><Card className="space-y-3 p-4">
+  <div className="text-sm font-extrabold text-slate-800">AI 5줄 초안 불러오기</div>
+  <p className="text-xs leading-5 text-slate-500">
+    AI 답변에 포함된 ‘최종 결정 5줄 입력용 초안’을 찾아 아래 입력칸에 임시로 채웁니다.
+    반드시 우리 팀의 표현으로 다시 수정해 주세요.
+  </p>
+
+     <TextArea
+    label="AI 답변 전체 붙여넣기"
+    placeholder="Gemini 또는 ChatGPT가 생성한 답변 전체를 붙여넣으세요. [최종 결정 5줄 입력용 초안]이 포함되어 있으면 아래 5개 입력칸으로 불러올 수 있습니다."
+    value={aiSummary}
+    onChange={setAiSummary}
+    rows={6}
+  />   
+      
+      <button
+    type="button"
+    onClick={importAiFinalLines}
+    disabled={!filled(aiSummary)}
+    className="w-full rounded-2xl bg-violet-600 px-4 py-3 text-sm font-extrabold text-white disabled:bg-slate-100 disabled:text-slate-300"
+  >
+    AI 5줄 초안 불러오기
+  </button>
+</Card>{finalGuides.map((g, i) => <div key={g[0]} className="space-y-2"><TextInput label={`${i + 1}. ${g[0]}`} placeholder="내용을 입력하세요" value={finalLines[i]} onChange={(v) => setFinalLines((arr) => arr.map((x, idx) => idx === i ? v : x))} /><p className="rounded-2xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">{g[1]}</p></div>)}{canFinal && <Card className="border-emerald-100 bg-emerald-50 p-5"><Pill tone="green">완성 결정문 미리보기</Pill><pre className="mt-4 whitespace-pre-wrap text-sm font-semibold leading-7 text-slate-800">{finalPreview}</pre></Card>}{!canFinal && <RequiredMessage>최종 5줄 결정문을 모두 입력해야 저장할 수 있습니다.</RequiredMessage>}<PrimaryButton onClick={save} disabled={!canFinal}>제출하고 저장하기</PrimaryButton></div>}
     {screen === 14 && <div className="space-y-5"><Pill tone="green">김박사의 피드백</Pill><Card className="p-5"><pre className="whitespace-pre-wrap text-sm font-semibold leading-8 text-slate-700">{kim}</pre></Card><PrimaryButton onClick={next}>로그북 저장하기</PrimaryButton></div>}
     {screen === 15 && <div className="space-y-5"><Pill tone="green">로그북</Pill><Card className="space-y-3 p-5 text-sm"><div className="rounded-2xl bg-emerald-50 p-3 text-center text-xs font-bold text-emerald-700">브라우저 임시 저장소에 저장되었습니다.</div><div className="flex justify-between"><span>1차 판단</span><b>{firstChoice}</b></div><div className="flex justify-between"><span>2차 판단</span><b>{secondChoice}</b></div><div className="border-t pt-3 whitespace-pre-wrap">{finalPreview}</div></Card><PrimaryButton onClick={next}>전체 여정 보기</PrimaryButton></div>}
     {screen === 16 && <div className="space-y-5"><Pill>여정 요약</Pill><h2 className="text-center text-2xl font-black text-slate-900">오늘의 판단 여정이 저장되었습니다</h2><Card className="p-5"><p className="text-sm leading-7 text-slate-600">1차 판단과 돌발상황을 함께 검토했고, 선택별 질문을 통해 판단의 근거·비용·설명 방식을 구체화했습니다.</p></Card><PrimaryButton onClick={() => { refreshCompleted(team); reset(); setScreen(1); }}>홈으로 돌아가기</PrimaryButton></div>}
