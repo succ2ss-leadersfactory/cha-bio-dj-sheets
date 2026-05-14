@@ -126,13 +126,21 @@ function SurpriseVisual({ n }: { n: number }) { const icons = ["👤", "⚠️",
 
 function cleanFinalDecisionLine(line: string) {
   return line
-    .replace(/^\s*[-*]?\s*[1-5][.)]\s*/, "")
+    .replace(/^\s*(?:[-*•]\s*)?(?:[1-5][.)]|[①②③④⑤])\s*/, "")
+    .replace(/^\s*\*\*|\*\*\s*$/g, "")
     .replace(/^["“”']|["“”']$/g, "")
     .trim();
 }
 
 function extractFinalDecisionLines(text: string): string[] {
-  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normalized = text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/[①]/g, "1.")
+    .replace(/[②]/g, "2.")
+    .replace(/[③]/g, "3.")
+    .replace(/[④]/g, "4.")
+    .replace(/[⑤]/g, "5.");
 
   const sectionMatch = normalized.match(
     /\[최종 결정 5줄 입력용 초안\]([\s\S]*?)(?:\n\[[^\]]+\]|\n이 초안은|$)/
@@ -141,15 +149,18 @@ function extractFinalDecisionLines(text: string): string[] {
   const source = sectionMatch?.[1] || normalized;
 
   const phrasePatterns = [
-    /나는 이 상황을[^\n]*문제로 본다[^\n]*/,
-    /나의 최종 선택은[^\n]*/,
-    /이 선택의 가장 큰 비용은[^\n]*/,
-    /그래서 붙일 실행 조건은[^\n]*/,
-    /내일 바로 할 첫 행동은[^\n]*/,
+    /나는\s*이\s*상황을[^\n]*(?:문제로\s*본다|문제라고\s*본다|문제이다|문제다)[^\n]*/i,
+    /나의\s*최종\s*선택은[^\n]*/i,
+    /이\s*선택의\s*가장\s*큰\s*비용은[^\n]*/i,
+    /그래서\s*붙일\s*실행\s*조건은[^\n]*/i,
+    /내일\s*바로\s*할\s*첫\s*행동은[^\n]*/i,
   ];
 
   const phraseLines = phrasePatterns
-    .map((pattern) => source.match(pattern)?.[0]?.trim() || "")
+    .map((pattern) => {
+      const match = source.match(pattern)?.[0] || normalized.match(pattern)?.[0] || "";
+      return cleanFinalDecisionLine(match);
+    })
     .filter(Boolean);
 
   if (phraseLines.length === 5) return phraseLines;
@@ -157,14 +168,27 @@ function extractFinalDecisionLines(text: string): string[] {
   const numberedLines = source
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => /^[1-5][.)]\s+/.test(line))
+    .filter((line) => /^(?:[-*•]\s*)?[1-5][.)]\s+/.test(line))
     .map(cleanFinalDecisionLine)
     .filter(Boolean);
 
   if (numberedLines.length >= 5) return numberedLines.slice(0, 5);
 
+  const bulletLines = source
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) =>
+      /^(?:[-*•]\s*)?(나는 이 상황을|나의 최종 선택은|이 선택의 가장 큰 비용은|그래서 붙일 실행 조건은|내일 바로 할 첫 행동은)/.test(line)
+    )
+    .map(cleanFinalDecisionLine)
+    .filter(Boolean);
+
+  if (bulletLines.length >= 5) return bulletLines.slice(0, 5);
+
   return [];
 }
+
+
 
 export default function LearnerAppPilotV5() {
   const scrollRef = useRef<HTMLDivElement>(null);
